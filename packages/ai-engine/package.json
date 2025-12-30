@@ -1,0 +1,25 @@
+{
+  "name": "@repo/ai-engine",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./vision": "./src/vision.ts",
+    "./intent": "./src/intent.ts",
+    "./research": "./src/research.ts",
+    "./ui": "./src/ui.ts"
+  },
+  "dependencies": {
+    "@repo/shared": "workspace:*",
+    "groq-sdk": "^0.37.0",
+    "exa-js": "^2.0.12",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^20",
+    "typescript": "^5"
+  }
+}
