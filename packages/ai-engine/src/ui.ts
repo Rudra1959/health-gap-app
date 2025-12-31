@@ -107,7 +107,7 @@ Return JSON with propTypes mapping each property name to its semantic type.`;
 }
 
 export async function generateUI(
-  analysis: string, 
+  analysis: string,
   userIntent: string,
   conflictContext?: ConflictContext
 ): Promise<DynamicUIResponse> {
@@ -120,22 +120,15 @@ export async function generateUI(
 ## CONFLICTING EVIDENCE DETECTED
 The research found conflicting regulatory/scientific positions. You MUST:
 1. Generate a "TradeOffCard" or "ConflictComparison" component for EACH conflict
-
 2. Present BOTH sides neutrally - DO NOT pick a winner
-3. Let the user see all positions and decide for themselves
+3. **REQUIRED**: Include a "guidance" or "neutralContext" prop with 2-3 sentences helping the user understand the trade-off.
 
 ### Detected Trade-offs:
 ${tradeOffs.map((t: TradeOffContext, i: number) => `
 **${i + 1}. ${t.ingredient}** (${t.conflictType} conflict)
 - Summary: ${t.summary}
 - Positions: ${t.positions.map((p: TradeOffContext["positions"][0]) => `${p.source} (${p.region}): ${p.stance}`).join(" vs ")}
-- User Guidance: ${t.userGuidance}
 `).join("\n")}
-
-### Required: Generate a component for each trade-off showing:
-- Both/all regulatory positions side by side
-- No recommendation that favors one side
-- Neutral language that informs without prescribing
 `
       : "";
 

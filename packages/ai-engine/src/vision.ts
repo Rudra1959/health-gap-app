@@ -322,8 +322,24 @@ Return ONLY valid JSON with this structure:
       }
 
       const raw = RawVisionResponseSchema.parse(JSON.parse(cleanJson(content)));
-      
-      const assessment = await assessExtractionWithLLM(raw);
+      let assessment: z.infer<typeof ExtractionAssessmentSchema>;
+
+      const isHighConfidence =
+        raw.isReadable !== false &&
+        (raw.ingredients?.length ?? 0) >= 3 &&
+        (raw.confidence ?? 0) > 0.7;
+
+      if (isHighConfidence) {
+        assessment = {
+          confidence: raw.confidence || 0.8,
+          extractionQuality: "high",
+          isUsable: true,
+          failureReason: "none",
+          reasoning: "High confidence extraction skipped secondary assessment",
+        };
+      } else {
+        assessment = await assessExtractionWithLLM(raw);
+      }
 
       if (!assessment.isUsable || assessment.failureReason !== "none") {
         const failureReason = assessment.failureReason === "none" 

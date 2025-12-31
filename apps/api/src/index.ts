@@ -105,15 +105,11 @@ const routes = app.post(
       const currentTime = new Date().toISOString();
       const recentHistory = sessionId ? await getRecentPatterns(sessionId) : [];
       
-      const intentResult = await intentInference(currentTime, productName, scanLocation, recentHistory);
+      const intentResult = await intentInference(currentTime, ingredients, productName, scanLocation, recentHistory);
       const userIntent = intentResult.persona;
       const userContextBias = intentResult.userContextBias;
       
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const researchResult = await researchAgent(ingredients, userIntent, userContextBias);
-      
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const researchResult = await researchAgent(ingredients, userIntent, intentResult.riskAssessment, userContextBias);
       
       const uiResponse = await generateUI(
         researchResult.analysis, 

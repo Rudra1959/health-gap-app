@@ -102,6 +102,14 @@ export const IntentInferenceResultSchema = z.object({
   userContextBias: z.string(),
   confidence: z.enum(["high", "medium", "low"]),
   historyInfluenced: z.boolean(),
+  riskAssessment: z.object({
+    ingredientsToResearch: z.array(z.string()),
+    riskDetails: z.record(z.string(), z.object({
+      riskLevel: IngredientRiskLevelSchema,
+      reasoning: z.string(),
+      requiresDeepResearch: z.boolean(),
+    })),
+  }).optional(),
 });
 
 export const ConsensusStatusSchema = z.enum([
@@ -156,6 +164,16 @@ export const ResearchAgentResultSchema = z.object({
     overallConfidence: z.number(),
     unresolvedConflicts: z.number(),
     dataWarnings: z.number(),
+  }),
+});
+
+export const CombinedResearchResultSchema = z.object({
+  claims: z.record(z.string(), SourceClaimSchema),
+  conflict: z.object({
+    detected: z.boolean(),
+    type: ConflictTypeSchema.optional(),
+    confidence: z.number().min(0).max(1),
+    summary: z.string().optional(),
   }),
 });
 
@@ -222,3 +240,4 @@ export type ConflictType = z.infer<typeof ConflictTypeSchema>;
 export type SourceClaim = z.infer<typeof SourceClaimSchema>;
 export type IngredientResearch = z.infer<typeof IngredientResearchSchema>;
 export type UIPropType = z.infer<typeof UIPropTypeSchema>;
+export type CombinedResearchResult = z.infer<typeof CombinedResearchResultSchema>;

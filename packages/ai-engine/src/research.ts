@@ -13,6 +13,7 @@ import {
   RegionSchema,
   ConflictTypeSchema,
   IngredientRiskLevelSchema,
+  CombinedResearchResultSchema,
   type SourceClaim,
   type IngredientResearch,
   type SafetyStance,
@@ -20,6 +21,8 @@ import {
   type Region,
   type ConflictType,
   type IngredientRiskLevel,
+  type CombinedResearchResult,
+  type IntentInferenceResult,
 } from "@repo/shared";
 
 const groq = new Groq({ apiKey: config.GROQ_API_KEY });
@@ -93,13 +96,7 @@ const RISK_LEVEL_VALUES = [
   "HIGH_SCRUTINY", "MODERATE_SCRUTINY", "STANDARD_REVIEW", "GENERALLY_RECOGNIZED_SAFE"
 ] as const;
 
-const ClaimClassificationSchema = z.object({
-  sourceCredibility: SourceCredibilityCategorySchema,
-  stance: SafetyStanceSchema,
-  region: RegionSchema,
-  confidenceInClassification: z.number().min(0).max(1),
-  reasoning: z.string(),
-});
+
 
 const IngredientRiskAssessmentSchema = z.object({
   riskLevel: IngredientRiskLevelSchema,
@@ -107,14 +104,7 @@ const IngredientRiskAssessmentSchema = z.object({
   requiresDeepResearch: z.boolean(),
 });
 
-const ConflictAnalysisSchema = z.object({
-  conflictDetected: z.boolean(),
-  conflictType: ConflictTypeSchema.optional(),
-  conflictSummary: z.string().optional(),
-  confidenceScore: z.number().min(0).max(1),
-  ambiguityLevel: z.enum(["low", "medium", "high"]),
-  reasoning: z.string(),
-});
+
 
 export type ConsensusStatus = 
   | "CLEAR_CONSENSUS"
@@ -154,307 +144,58 @@ interface GroundedResearchResult {
   dataQualityWarnings: string[];
 }
 
-const CLAIM_CLASSIFICATION_SYSTEM_PROMPT = `You are an expert at analyzing health and regulatory information sources.
+const COMBINED_RESEARCH_SYSTEM_PROMPT = `You are an expert at analyzing health and regulatory information sources and detecting conflicts.
+
+## TASK
+1. Analyze each source individually to extract credibility, stance, region, and confidence.
+2. Analyze the set of sources globally to detect conflicts.
 
 ## CLASSIFICATION RULES
 
-### Source Credibility Assessment
-Determine source authority based on:
-- Institutional backing and mandate (government agencies have highest authority)
-- Peer-review processes (academic journals with rigorous review processes)
-- Editorial standards and accountability
-- Track record of accuracy and corrections
-- Potential conflicts of interest
+### Source Credibility
+- REGULATORY_AUTHORITY: Government bodies (FDA, EFSA)
+- PEER_REVIEWED_RESEARCH: Academic journals
+- INSTITUTIONAL_RESEARCH: Universities, reputable institutes
+- INDUSTRY_PUBLICATION: Trade/Industry funded
+- NEWS_MEDIA: Journalism
+- GENERAL_WEB: Blogs, unverified
 
-Categories (in order of typical authority):
-- REGULATORY_AUTHORITY: Government bodies with legal mandate for food/drug safety
-- PEER_REVIEWED_RESEARCH: Academic publications with formal peer review
-- INSTITUTIONAL_RESEARCH: University or major research institution publications
-- INDUSTRY_PUBLICATION: Trade publications, may have industry funding
-- NEWS_MEDIA: Journalism with editorial standards
-- GENERAL_WEB: Unverified sources, blogs, forums
+### Safety Stance
+Analyze SEMANTIC MEANING:
+- APPROVED: Safe, cleared
+- CONDITIONALLY_SAFE: Safe with limits/conditions
+- UNDER_REVIEW: Pending
+- CAUTION_ADVISED: Risks identified
+- RESTRICTED: Limited use
+- PROHIBITED: Banned
 
-### Safety Stance Determination
-Analyze the SEMANTIC MEANING of the content, not specific keywords:
-- APPROVED: Clear endorsement, explicit safety declaration, regulatory clearance
-- CONDITIONALLY_SAFE: Safe with caveats, specific conditions, or dose limits
-- UNDER_REVIEW: Pending evaluation, ongoing studies, no conclusion yet
-- CAUTION_ADVISED: Concerns expressed, risks identified, monitoring recommended
-- RESTRICTED: Limited use permitted, special warnings required
-- PROHIBITED: Banned, illegal, explicitly forbidden
+### Conflict Detection (Global)
+A TRUE conflict mentions:
+- REGIONAL: Different standards (e.g., banned in EU, allowed in US)
+- SCIENTIFIC: Contradictory study results
+- DOSAGE/POPULATION: Disagreements on limits or at-risk groups
 
-### Region Identification
-Infer geographic context from:
-- Institutional references (which regulatory body is cited)
-- Legal frameworks mentioned
-- Geographic scope of studies or regulations
-- Language and regulatory terminology used
+Do NOT flag apparent conflicts (e.g. low vs high credibility sources disagreeing).
 
-Output ONLY valid JSON matching the required schema.`;
+Output STRICT JSON matching the required schema.`;
 
-const INGREDIENT_RISK_SYSTEM_PROMPT = `You are an expert toxicologist and food safety scientist.
 
-## RISK ASSESSMENT RULES
 
-Evaluate ingredient risk based on PRINCIPLES, not specific ingredient names:
 
-### High Scrutiny Indicators
-- History of regulatory bans or restrictions in any major jurisdiction
-- Ongoing scientific controversy with active research disputes
-- Known bioactive mechanisms that could cause harm at dietary levels
-- Previous recalls or safety incidents
-- Synthetic compounds mimicking natural substances
 
-### Moderate Scrutiny Indicators  
-- Mixed regulatory status across jurisdictions
-- Some populations more sensitive (children, pregnant, elderly)
-- Dose-dependent safety concerns
-- Emerging research suggesting potential issues
 
-### Standard Review Indicators
-- Generally accepted but with some historical controversy
-- Natural compounds with long history of safe use
-- Minor processing aids or technical additives
 
-### Generally Recognized Safe Indicators
-- Long history of safe consumption across cultures
-- Whole food ingredients or their direct derivatives
-- Well-understood metabolism and no accumulation concerns
-
-CRITICAL: Do NOT use ingredient name matching. Evaluate based on your knowledge of the compound's properties, regulatory history, and scientific evidence.
-
-Output ONLY valid JSON matching the required schema.`;
-
-const CONFLICT_ANALYSIS_SYSTEM_PROMPT = `You are an expert at analyzing scientific and regulatory disagreements.
-
-## CONFLICT DETECTION RULES
-
-Analyze the claims semantically to determine if genuine conflict exists:
-
-### Conflict Types
-- REGIONAL: Different jurisdictions have genuinely different standards (not just labeling differences)
-- SCIENTIFIC: Competing interpretations of research data, methodology disputes
-- DOSAGE: Disagreement on safe consumption levels or acceptable daily intake
-- POPULATION: Different risk profiles for demographics (children, pregnant, immunocompromised)
-- TEMPORAL: Old vs new research with contradictory findings
-- METHODOLOGICAL: Disagreement on study validity, design, or interpretation
-
-### True Conflict vs Apparent Conflict
-A TRUE conflict exists when:
-- Sources with similar credibility reach opposite conclusions
-- Regulatory bodies in comparable jurisdictions make different decisions
-- Well-designed studies produce contradictory results
-
-An APPARENT conflict (not a real conflict) exists when:
-- A low-credibility source disagrees with high-credibility sources
-- Outdated information contradicts current consensus
-- Different contexts are being compared (therapeutic vs dietary use)
-
-### Confidence Assessment
-- High confidence: Multiple high-quality sources with clear positions
-- Medium confidence: Limited sources or some ambiguity in positions
-- Low confidence: Few sources, unclear positions, or data quality issues
-
-Output ONLY valid JSON matching the required schema.`;
-
-async function classifyClaimWithLLM(
-  content: string,
-  url: string,
-  title: string,
-  ingredient: string
-): Promise<z.infer<typeof ClaimClassificationSchema>> {
-  const prompt = `Analyze this source and classify it:
-
-SOURCE URL: ${url}
-SOURCE TITLE: ${title}
-INGREDIENT BEING RESEARCHED: ${ingredient}
-CONTENT EXCERPT: ${content.substring(0, 1000)}
-
-Classify the source credibility, safety stance regarding ${ingredient}, and geographic region.
-Return JSON with: sourceCredibility, stance, region, confidenceInClassification (0-1), reasoning`;
-
-  try {
-    const completion = await rateLimitedCall(() => groq.chat.completions.create({
-      messages: [
-        { role: "system", content: CLAIM_CLASSIFICATION_SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-      model: "llama-3.1-8b-instant",
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-      max_tokens: 300,
-    }));
-
-    const response = completion.choices[0]?.message?.content;
-    if (!response) throw new Error("No response from LLM");
-
-    const raw = JSON.parse(cleanJson(response));
-    
-    const normalized = {
-      sourceCredibility: findClosestEnumValue(raw.sourceCredibility, CREDIBILITY_VALUES, "GENERAL_WEB"),
-      stance: findClosestEnumValue(raw.stance, STANCE_VALUES, "UNDER_REVIEW"),
-      region: findClosestEnumValue(raw.region, REGION_VALUES, "UNSPECIFIED"),
-      confidenceInClassification: coerceToNumber(raw.confidenceInClassification, 0.5),
-      reasoning: coerceToString(raw.reasoning),
-    };
-
-    return ClaimClassificationSchema.parse(normalized);
-  } catch (error) {
-    console.warn(`[ResearchAgent] LLM classification failed:`, error);
-    return {
-      sourceCredibility: "GENERAL_WEB",
-      stance: "UNDER_REVIEW",
-      region: "UNSPECIFIED",
-      confidenceInClassification: 0.3,
-      reasoning: "Classification failed",
-    };
-  }
-}
-
-async function assessIngredientRiskWithLLM(
-  ingredients: string[],
-  userIntent: string
-): Promise<Map<string, z.infer<typeof IngredientRiskAssessmentSchema>>> {
-  const prompt = `Assess the risk level for these ingredients in the context of: "${userIntent}"
-
-INGREDIENTS: ${ingredients.join(", ")}
-
-For each ingredient, determine:
-1. riskLevel: HIGH_SCRUTINY | MODERATE_SCRUTINY | STANDARD_REVIEW | GENERALLY_RECOGNIZED_SAFE
-2. reasoning: Why this risk level
-3. requiresDeepResearch: Whether this ingredient needs external source verification
-
-Return JSON object with ingredient names as keys.`;
-
-  try {
-    const completion = await rateLimitedCall(() => groq.chat.completions.create({
-      messages: [
-        { role: "system", content: INGREDIENT_RISK_SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-      model: "llama-3.1-8b-instant",
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-      max_tokens: 500,
-    }));
-
-    const response = completion.choices[0]?.message?.content;
-    if (!response) throw new Error("No response from LLM");
-
-    const parsed = JSON.parse(cleanJson(response));
-    const result = new Map<string, z.infer<typeof IngredientRiskAssessmentSchema>>();
-
-    for (const ingredient of ingredients) {
-      const assessment = parsed[ingredient] || parsed[ingredient.toLowerCase()];
-      if (assessment) {
-        const normalized = {
-          riskLevel: findClosestEnumValue(assessment.riskLevel, RISK_LEVEL_VALUES, "STANDARD_REVIEW"),
-          reasoning: coerceToString(assessment.reasoning),
-          requiresDeepResearch: coerceToBoolean(assessment.requiresDeepResearch),
-        };
-        result.set(ingredient, IngredientRiskAssessmentSchema.parse(normalized));
-      } else {
-        result.set(ingredient, {
-          riskLevel: "STANDARD_REVIEW",
-          reasoning: "No assessment provided",
-          requiresDeepResearch: true,
-        });
-      }
-    }
-
-    return result;
-  } catch (error) {
-    console.warn(`[ResearchAgent] Risk assessment failed:`, error);
-    const result = new Map<string, z.infer<typeof IngredientRiskAssessmentSchema>>();
-    for (const ingredient of ingredients) {
-      result.set(ingredient, {
-        riskLevel: "STANDARD_REVIEW",
-        reasoning: "Risk assessment failed, using default",
-        requiresDeepResearch: true,
-      });
-    }
-    return result;
-  }
-}
-
-async function analyzeConflictsWithLLM(
-  claims: SourceClaim[],
-  ingredient: string
-): Promise<z.infer<typeof ConflictAnalysisSchema>> {
-  if (claims.length === 0) {
-    return {
-      conflictDetected: false,
-      confidenceScore: 0.3,
-      ambiguityLevel: "high",
-      reasoning: "No claims to analyze",
-    };
-  }
-
-  const claimsSummary = claims.map((c, i) => 
-    `[${i + 1}] ${c.source} (${c.sourceCredibility}, ${c.region}): ${c.stance} - "${c.claim.substring(0, 200)}"`
-  ).join("\n");
-
-  const prompt = `Analyze these claims about "${ingredient}" for conflicts:
-
-${claimsSummary}
-
-Determine if there are genuine conflicts between sources, the type of conflict, and overall confidence.
-Return JSON with: conflictDetected, conflictType (if detected), conflictSummary, confidenceScore, ambiguityLevel, reasoning`;
-
-  try {
-    const completion = await rateLimitedCall(() => groq.chat.completions.create({
-      messages: [
-        { role: "system", content: CONFLICT_ANALYSIS_SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-      model: "llama-3.1-8b-instant",
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-      max_tokens: 400,
-    }));
-
-    const response = completion.choices[0]?.message?.content;
-    if (!response) throw new Error("No response from LLM");
-
-    const raw = JSON.parse(cleanJson(response));
-    const ambiguityOptions = ["low", "medium", "high"] as const;
-    
-    let normalizedConflictType: typeof CONFLICT_TYPE_VALUES[number] | undefined = undefined;
-    if (typeof raw.conflictType === "string") {
-      normalizedConflictType = findClosestEnumValue(raw.conflictType, CONFLICT_TYPE_VALUES, CONFLICT_TYPE_VALUES[0]);
-    }
-    
-    const normalized = {
-      conflictDetected: coerceToBoolean(raw.conflictDetected),
-      conflictType: normalizedConflictType,
-      conflictSummary: raw.conflictSummary ? coerceToString(raw.conflictSummary) : undefined,
-      confidenceScore: coerceToNumber(raw.confidenceScore, 0.5),
-      ambiguityLevel: findClosestEnumValue(raw.ambiguityLevel, ambiguityOptions, "medium"),
-      reasoning: coerceToString(raw.reasoning),
-    };
-
-    return ConflictAnalysisSchema.parse(normalized);
-  } catch (error) {
-    console.warn(`[ResearchAgent] Conflict analysis failed:`, error);
-    return {
-      conflictDetected: false,
-      confidenceScore: 0.5,
-      ambiguityLevel: "medium",
-      reasoning: "Conflict analysis failed",
-    };
-  }
-}
-
-function getResearchDepth(ingredientCount: number, hasHighRisk: boolean): { 
-  maxIngredients: number; 
+function getResearchDepth(ingredientCount: number, hasHighRisk: boolean): {
+  maxIngredients: number;
   resultsPerIngredient: number;
 } {
   if (ingredientCount <= 2) {
-    return { maxIngredients: 2, resultsPerIngredient: hasHighRisk ? 3 : 2 };
+    return { maxIngredients: 2, resultsPerIngredient: hasHighRisk ? 4 : 3 };
   } else if (ingredientCount <= 4) {
-    return { maxIngredients: 3, resultsPerIngredient: 2 };
+    return { maxIngredients: 3, resultsPerIngredient: 3 };
   } else {
-    return { maxIngredients: 4, resultsPerIngredient: 1 };
+    // Cap ingredients but ensure we get enough data for the ones we do check
+    return { maxIngredients: 3, resultsPerIngredient: 2 };
   }
 }
 
@@ -466,40 +207,126 @@ function buildSearchQueries(ingredient: string, userIntent: string): string[] {
   ];
   
   const intentQuery = `"${ingredient}" ${userIntent} health implications`;
-  
+   
   return [intentQuery, ...baseQueries];
 }
 
-async function extractClaimsFromResultsWithLLM(
-  results: any[], 
+async function analyzeResearchWithLLM(
+  results: any[],
   ingredient: string
-): Promise<SourceClaim[]> {
-  const claims: SourceClaim[] = [];
-  
-  for (const result of results) {    // Use Exa's AI-generated summary (much more concise than raw text/highlights)
-    const content = result.summary || result.highlights?.join(" ") || result.text || "";
-    const title = result.title || "";
-    const url = result.url || "";
-    
-    const classification = await classifyClaimWithLLM(content, url, title, ingredient);
-    
-    claims.push({
-      source: title || url,
-      sourceUrl: url,
-      sourceCredibility: classification.sourceCredibility,
-      claim: content,
-      stance: classification.stance,
-      region: classification.region,
-      datePublished: result.publishedDate,
-      confidenceInClassification: classification.confidenceInClassification,
-    });
+): Promise<CombinedResearchResult> {
+  if (results.length === 0) {
+    return {
+      claims: {},
+      conflict: { detected: false, confidence: 0.0 }
+    };
   }
-  
-  return claims;
+
+  const claimsData = results.map((result, idx) => ({
+    idx,
+    content: result.summary || result.highlights?.join(" ") || result.text || "",
+    title: result.title || "",
+    url: result.url || "",
+    publishedDate: result.publishedDate,
+  }));
+
+  const prompt = `Analyze these search results for "${ingredient}":
+
+${claimsData.map(c => `[SOURCE ${c.idx}]
+TITLE: ${c.title}
+URL: ${c.url}
+CONTENT: ${c.content}`).join("\n\n")}
+
+Task:
+1. Extract and classify claims for EACH source.
+2. Detect if there are conflicts between these sources.
+
+Return JSON object:
+{
+  "claims": {
+    "0": {
+      "sourceCredibility": "REGULATORY_AUTHORITY" | "PEER_REVIEWED_RESEARCH" | ...,
+      "stance": "APPROVED" | "CONDITIONALLY_SAFE" | ...,
+      "region": "UNITED_STATES" | "EUROPEAN_UNION" | ...,
+      "confidence": 0-1,
+      "claim": "Extracted claim text...",
+      "rationale": "Why this classification..."
+    }
+  },
+  "conflict": {
+    "detected": boolean,
+    "type": "REGIONAL" | "SCIENTIFIC" | ... (optional),
+    "summary": "Brief explanation of conflict",
+    "confidence": 0-1
+  }
+}`;
+
+  try {
+    const completion = await rateLimitedCall(() => groq.chat.completions.create({
+      messages: [
+        { role: "system", content: COMBINED_RESEARCH_SYSTEM_PROMPT },
+        { role: "user", content: prompt },
+      ],
+      model: "llama-3.1-8b-instant",
+      response_format: { type: "json_object" },
+      temperature: 0.2,
+      max_tokens: 1000,
+    }));
+
+    const response = completion.choices[0]?.message?.content;
+    const parsed = response ? JSON.parse(cleanJson(response)) : {};
+
+    const claims: Record<string, SourceClaim> = {};
+    const rawClaims = parsed.claims || {};
+
+    for (const [key, rawClaim] of Object.entries(rawClaims)) {
+      const idx = parseInt(key);
+      const originalSource = claimsData.find(c => c.idx === idx);
+
+      if (originalSource && typeof rawClaim === 'object' && rawClaim !== null) {
+        const rc = rawClaim as any;
+        // Use URL as stable key if available, otherwise index
+        const claimKey = originalSource.url || key;
+        claims[claimKey] = {
+          source: originalSource.title || originalSource.url,
+          sourceUrl: originalSource.url,
+          sourceCredibility: findClosestEnumValue(rc.sourceCredibility, CREDIBILITY_VALUES, "GENERAL_WEB"),
+          claim: coerceToString(rc.claim || originalSource.content),
+          stance: findClosestEnumValue(rc.stance, STANCE_VALUES, "UNDER_REVIEW"),
+          region: findClosestEnumValue(rc.region, REGION_VALUES, "UNSPECIFIED"),
+          datePublished: originalSource.publishedDate,
+          confidenceInClassification: coerceToNumber(rc.confidence, 0.5),
+        };
+      }
+    }
+
+    const rawConflict = parsed.conflict || {};
+    let conflictType: ConflictType | undefined = undefined;
+    if (typeof rawConflict.type === "string") {
+      conflictType = findClosestEnumValue(rawConflict.type, CONFLICT_TYPE_VALUES, CONFLICT_TYPE_VALUES[0]);
+    }
+
+    return {
+      claims,
+      conflict: {
+        detected: coerceToBoolean(rawConflict.detected),
+        type: conflictType,
+        confidence: coerceToNumber(rawConflict.confidence, 0.5),
+        summary: rawConflict.summary ? coerceToString(rawConflict.summary) : undefined
+      }
+    };
+
+  } catch (error) {
+    console.warn(`[ResearchAgent] Combined analysis failed:`, error);
+    return {
+      claims: {},
+      conflict: { detected: false, confidence: 0.3 }
+    };
+  }
 }
 
 async function researchIngredient(
-  ingredient: string, 
+  ingredient: string,
   userIntent: string,
   numResults: number,
   riskLevel: IngredientRiskLevel
@@ -507,96 +334,124 @@ async function researchIngredient(
   const queries = buildSearchQueries(ingredient, userIntent);
   const allClaims: SourceClaim[] = [];
   const errors: string[] = [];
-  
+
   const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
     return Promise.race([
       promise,
-      new Promise<T>((_, reject) => 
+      new Promise<T>((_, reject) =>
         setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs)
       )
     ]);
   };
-  
+
+  let conflictResult: CombinedResearchResult["conflict"] = {
+    detected: false,
+    confidence: 0,
+    summary: "No conflict detected in primary analysis."
+  };
+
   try {
     const primaryQuery = queries[0];
     if (!primaryQuery) throw new Error("No primary query generated");
-    
+
     const searchResponse = await withTimeout(
-      exa.searchAndContents(
+      exa.search(
         primaryQuery,
         {
           type: "neural",
-          useAutoprompt: true,
           numResults,
-          summary: {
-            query: `Safety, health effects, and regulatory status of ${ingredient}`,
-          },
-        } as Parameters<typeof exa.searchAndContents>[1]
+          contents: {
+            summary: {
+              query: `Safety, health effects, and regulatory status of ${ingredient}`,
+            },
+            highlights: {
+              numSentences: 3,
+              query: `Health risks and benefits of ${ingredient}`,
+            },
+            text: {
+              maxCharacters: 2000,
+            }
+          }
+        }
       ),
       config.EXA_TIMEOUT_MS
     );
-    
-    const claims = await extractClaimsFromResultsWithLLM(
-      (searchResponse as { results: unknown[] }).results, 
-      ingredient
-    );
-    allClaims.push(...claims);
+
+    const results = (searchResponse as { results: unknown[] }).results;
+    const primaryAnalysis = await analyzeResearchWithLLM(results, ingredient);
+
+    Object.values(primaryAnalysis.claims).forEach(c => allClaims.push(c));
+    conflictResult = primaryAnalysis.conflict;
+
+    if (conflictResult.detected) {
+      console.log(`Conflict detected in primary research for ${ingredient}: ${conflictResult.type}`);
+    }
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Unknown error";
     errors.push(`Primary search failed: ${errorMsg}`);
     console.warn(`[ResearchAgent] Exa search failed for "${ingredient}": ${errorMsg}`);
   }
-  
+
   const needsDeepResearch = riskLevel === "HIGH_SCRUTINY" || riskLevel === "MODERATE_SCRUTINY";
-  
+
   if (needsDeepResearch && allClaims.length < 3) {
     try {
       const regulatoryQuery = queries[1];
       if (!regulatoryQuery) throw new Error("No regulatory query generated");
-      
+
       const regulatoryResponse = await withTimeout(
-        exa.searchAndContents(
+        exa.search(
           regulatoryQuery,
           {
             type: "neural",
-            useAutoprompt: true,
             numResults: 2,
-            summary: {
-              query: `Regulatory status and safety assessment of ${ingredient}`,
-            },
-          } as Parameters<typeof exa.searchAndContents>[1]
+            contents: {
+              summary: {
+                query: `${ingredient} regulatory status FDA EFSA WHO`,
+              },
+              highlights: {
+                numSentences: 3,
+                query: `${ingredient} bans restrictions limits`,
+              },
+              text: {
+                maxCharacters: 2000,
+              }
+            }
+          }
         ),
         config.EXA_TIMEOUT_MS
       );
-      
-      const claims = await extractClaimsFromResultsWithLLM(
-        (regulatoryResponse as { results: unknown[] }).results, 
+
+      const secondaryAnalysis = await analyzeResearchWithLLM(
+        (regulatoryResponse as { results: unknown[] }).results,
         ingredient
       );
-      allClaims.push(...claims);
+
+      Object.values(secondaryAnalysis.claims).forEach(c => allClaims.push(c));
+      conflictResult = secondaryAnalysis.conflict;
+
     } catch (err) {
       console.warn(`[ResearchAgent] Secondary search failed for "${ingredient}"`);
     }
   }
-  
-  const conflictAnalysis = await analyzeConflictsWithLLM(allClaims, ingredient);
-  
+
   return {
     ingredient,
     riskLevel,
     claims: allClaims,
-    conflictDetected: conflictAnalysis.conflictDetected,
-    conflictType: conflictAnalysis.conflictType,
-    conflictSummary: conflictAnalysis.conflictSummary,
-    confidenceScore: conflictAnalysis.confidenceScore,
-    ambiguityLevel: conflictAnalysis.ambiguityLevel,
+    conflictDetected: conflictResult.detected,
+    conflictType: conflictResult.type,
+    conflictSummary: conflictResult.summary,
+    confidenceScore: conflictResult.confidence,
+    ambiguityLevel: "medium",
     riskAssessmentReasoning: `Risk level ${riskLevel} based on LLM assessment`,
   };
 }
 
 async function performGroundedResearch(
   ingredientsToResearch: string[],
-  userIntent: string
+  userIntent: string,
+  riskAssessments: Map<string, z.infer<typeof IngredientRiskAssessmentSchema>>
 ): Promise<GroundedResearchResult> {
   if (!config.EXA_API_KEY) {
     console.warn("[ResearchAgent] EXA_API_KEY not configured - skipping grounded research");
@@ -607,9 +462,7 @@ async function performGroundedResearch(
       dataQualityWarnings: ["Exa.ai API key not configured - analysis based on LLM knowledge only"],
     };
   }
-  
-  const riskAssessments = await assessIngredientRiskWithLLM(ingredientsToResearch, userIntent);
-  
+   
   const riskPriority: Record<IngredientRiskLevel, number> = {
     "HIGH_SCRUTINY": 3,
     "MODERATE_SCRUTINY": 2,
@@ -693,7 +546,7 @@ async function performGroundedResearch(
   }
   
   const confidenceScores = ingredientResearch.map(r => r.confidenceScore);
-  const overallConfidence = confidenceScores.length > 0 
+  const overallConfidence = confidenceScores.length > 0
     ? confidenceScores.reduce((a, b) => a + b, 0) / confidenceScores.length
     : 0.5;
   
@@ -785,59 +638,15 @@ const NeutralGuidanceSchema = z.object({
   guidance: z.string(),
 });
 
-async function generateNeutralGuidanceWithLLM(
-  ingredient: string,
-  conflictType: ConflictType,
-  positions: TradeOffContext["positions"]
-): Promise<string> {
-  const positionsSummary = positions.map(p => 
-    `${p.source} (${p.region}): ${p.stance}`
-  ).join("; ");
 
-  const prompt = `Generate neutral, non-prescriptive guidance for a user about "${ingredient}".
 
-CONFLICT TYPE: ${conflictType}
-POSITIONS: ${positionsSummary}
-
-RULES:
-- Do NOT recommend one position over another
-- Do NOT tell the user what to do
-- DO explain what factors they might consider
-- DO acknowledge the complexity
-- Keep it to 2-3 sentences
-
-Return JSON with: { "guidance": "..." }`;
-
-  try {
-    const completion = await rateLimitedCall(() => groq.chat.completions.create({
-      messages: [
-        { 
-          role: "system", 
-          content: "You generate neutral, balanced guidance that helps users understand trade-offs without prescribing action. Never favor one regulatory position over another."
-        },
-        { role: "user", content: prompt },
-      ],
-      model: "llama-3.1-8b-instant",
-      response_format: { type: "json_object" },
-      temperature: 0.3,
-      max_tokens: 150,
-    }));
-
-    const response = completion.choices[0]?.message?.content;
-    if (!response) throw new Error("No response");
-
-    const parsed = NeutralGuidanceSchema.parse(JSON.parse(cleanJson(response)));
-    return parsed.guidance;
-  } catch {
-    return `Multiple perspectives exist on ${ingredient} (${conflictType.toLowerCase()} considerations). Review the positions above to make an informed choice based on your personal situation.`;
-  }
-}
 
 async function extractTradeOffContexts(research: GroundedResearchResult): Promise<TradeOffContext[]> {
   const tradeOffs: TradeOffContext[] = [];
   
   for (const ir of research.ingredientResearch) {
-    if (!ir.conflictDetected || ir.claims.length < 2) {
+    // Allow single-source conflicts if the source itself discusses the controversy (e.g. a review paper)
+    if (!ir.conflictDetected || ir.claims.length === 0) {
       continue;
     }
     
@@ -853,68 +662,58 @@ async function extractTradeOffContexts(research: GroundedResearchResult): Promis
         stance: claim.stance,
         rationale: claim.claim.substring(0, 200),
       }));
-    
-    const userGuidance = await generateNeutralGuidanceWithLLM(
-      ir.ingredient,
-      conflictType,
-      positions
-    );
-    
+
+
+
     tradeOffs.push({
       ingredient: ir.ingredient,
       conflictType,
       summary: ir.conflictSummary || "Conflicting positions detected",
       positions,
-      userGuidance,
+      userGuidance: `Conflicting evidence detected for ${ir.ingredient}. See positions below.`,
     });
   }
-  
+
   return tradeOffs;
 }
 
 export async function researchAgent(
-  ingredients: string[], 
+  ingredients: string[],
   userIntent: string,
+  riskAssessmentData?: IntentInferenceResult["riskAssessment"],
   userContextBias?: string
 ): Promise<ResearchAgentResult> {
   return withRetry(async () => {
-    const identificationPrompt = `
-      Given the user intent '${userIntent}' and this list of ingredients: ${ingredients.join(", ")}.
-      Identify which ingredients are controversial, obscure, or have conflicting health data.
-      Consider: artificial additives, preservatives, colorings, sweeteners, compounds with regional bans.
-      
-      ${userContextBias ? `USER CONTEXT: ${userContextBias}` : ""}
-      
-      Return a JSON object with:
-      {
-        "ingredientsToResearch": ["ingredient1", "ingredient2"],
-        "riskAssessment": {
-          "ingredient1": "high|medium|low",
-          "ingredient2": "high|medium|low"
-        }
+    const ingredientsToResearch: string[] = riskAssessmentData?.ingredientsToResearch || [];
+
+    if (!riskAssessmentData && ingredients.length < 5) {
+      ingredientsToResearch.push(...ingredients);
+    }
+
+    const riskAssessments = new Map<string, z.infer<typeof IngredientRiskAssessmentSchema>>();
+
+    if (riskAssessmentData) {
+      Object.entries(riskAssessmentData.riskDetails).forEach(([ing, details]) => {
+        riskAssessments.set(ing, details);
+      });
+    }
+
+    for (const ingredient of ingredientsToResearch) {
+      if (!riskAssessments.has(ingredient)) {
+        riskAssessments.set(ingredient, {
+          riskLevel: "STANDARD_REVIEW",
+          reasoning: "Review required based on general screening",
+          requiresDeepResearch: true
+        });
       }
-      
-      If none need research, return empty arrays.
-    `;
-
-    const idCompletion = await rateLimitedCall(() => groq.chat.completions.create({
-      messages: [{ role: "user", content: identificationPrompt }],
-      model: "llama-3.1-8b-instant",
-      response_format: { type: "json_object" },
-    }));
-
-    const idContent = idCompletion.choices[0]?.message?.content;
-    const parsedId = idContent ? JSON.parse(cleanJson(idContent)) : { ingredientsToResearch: [] };
-    const ingredientsToResearch: string[] = parsedId.ingredientsToResearch || [];
+    }
 
     console.log(`[ResearchAgent] Identified ${ingredientsToResearch.length} ingredients for research:`, ingredientsToResearch);
 
-    await new Promise(resolve => setTimeout(resolve, 300));
-
     let groundedResearch;
     try {
-      const researchPromise = performGroundedResearch(ingredientsToResearch, userIntent);
-      const timeoutPromise = new Promise<never>((_, reject) => 
+      const researchPromise = performGroundedResearch(ingredientsToResearch, userIntent, riskAssessments);
+      const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Research timeout")), config.RESEARCH_TIMEOUT_MS)
       );
       groundedResearch = await Promise.race([researchPromise, timeoutPromise]);
@@ -927,15 +726,13 @@ export async function researchAgent(
         dataQualityWarnings: ["Research timed out - using LLM knowledge only"],
       };
     }
-    
+
     const groundedContext = formatGroundedContext(groundedResearch);
 
     const consensusStatus = determineConsensusStatus(groundedResearch);
     const tradeOffContexts = await extractTradeOffContexts(groundedResearch);
 
     console.log(`[ResearchAgent] Consensus Status: ${consensusStatus}, Trade-offs: ${tradeOffContexts.length}`);
-
-    await new Promise(resolve => setTimeout(resolve, 300));
 
     const userContextSection = userContextBias
       ? `
@@ -1000,14 +797,14 @@ export async function researchAgent(
 
     const analysisCompletion = await rateLimitedCall(() => groq.chat.completions.create({
       messages: [
-        { 
-          role: "system", 
+        {
+          role: "system",
           content: `You are a nutritional researcher. 
 Always cite your sources. 
 When evidence conflicts, NEVER pick a side - present all positions neutrally.
 Your role is to INFORM, not to DECIDE for the user.
 Acknowledge uncertainty explicitly.
-Never make ungrounded claims.` 
+Never make ungrounded claims.`
         },
         { role: "user", content: analysisPrompt }
       ],
@@ -1015,7 +812,7 @@ Never make ungrounded claims.`
     }));
 
     const analysisText = analysisCompletion.choices[0]?.message?.content || "Unable to generate analysis.";
-    
+
     const metadata = {
       sourcesConsulted: groundedResearch.ingredientResearch.reduce((acc, ir) => acc + ir.claims.length, 0),
       overallConfidence: Math.round(groundedResearch.overallConfidence * 100),
