@@ -1,0 +1,26 @@
+{
+  "name": "@apps/backend",
+  "module": "index.ts",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts"
+  },
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.7.6",
+    "@repo/ai-engine": "workspace:*",
+    "@repo/database": "workspace:*",
+    "@repo/shared": "workspace:*",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.11.3",
+    "zod": "^4.2.1"
+  }
+}
