@@ -44,6 +44,7 @@ function extractHistoryPatterns(history: ScanHistoryEntry[]): {
 
 export async function intentInference(
   currentTime: string,
+  ingredients: string[],
   detectedProductType: string,
   scanLocation?: string,
   recentScanHistory: ScanHistoryEntry[] = []
@@ -68,6 +69,7 @@ Analyze the current product in the context of the user's recent scan history.
 CURRENT SCAN:
 - Time: ${currentTime}
 - Product: ${detectedProductType}
+- Ingredients: ${ingredients.slice(0, 50).join(", ")}
 - Location: ${scanLocation || "Unknown"}
 
 ${historyContext}
@@ -95,8 +97,27 @@ RESPOND WITH JSON:
   "persona": "Short Persona Name (max 3 words)",
   "userContextBias": "A sentence describing how to bias the nutritional analysis based on this user's apparent goals. Be specific.",
   "confidence": "high|medium|low",
-  "reasoning": "Brief explanation of inference logic"
+  "reasoning": "Brief explanation of inference logic",
+  "riskAssessment": {
+    "ingredientsToResearch": ["ingredient1", "ingredient2"],
+    "riskDetails": {
+      "ingredient1": {
+        "riskLevel": "HIGH_SCRUTINY|MODERATE_SCRUTINY|STANDARD_REVIEW|GENERALLY_RECOGNIZED_SAFE",
+        "reasoning": "Why this risk level",
+        "requiresDeepResearch": boolean
+      }
+    }
+  }
 }
+
+
+
+DATA INTEGRITY RULES:
+1. Multilingual Handling: Resolve the nutritional concept of non-English ingredients internally.
+2. Output Key Stability: The keys in 'riskDetails' MUST be identical to the strings in the 'ingredients' input list.
+   - Do NOT translate keys in the JSON output.
+   - Do NOT normalize casing or punctuation in the keys.
+   - The map must be directly visibly consistent with the input array.
 `;
 
     const chatCompletion = await rateLimitedCall(() => groq.chat.completions.create({
@@ -135,6 +156,7 @@ RESPOND WITH JSON:
         userContextBias: parsed.userContextBias || "Provide balanced nutritional analysis.",
         confidence: parsed.confidence || "medium",
         historyInfluenced: hasHistory && parsed.confidence !== "low",
+        riskAssessment: parsed.riskAssessment,
       });
     } catch {
       return IntentInferenceResultSchema.parse({

@@ -8,12 +8,12 @@ const envSchema = z.object({
   UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
   PORT: z.string().default("3000"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  GLOBAL_TIMEOUT_MS: z.string().transform(Number).default("55000"),
-  RESEARCH_TIMEOUT_MS: z.string().transform(Number).default("35000"),
-  EXA_TIMEOUT_MS: z.string().transform(Number).default("15000"),
-  RETRY_ATTEMPTS: z.string().transform(Number).default("3"),
-  RETRY_DELAY_MS: z.string().transform(Number).default("1000"),
-  RETRY_BACKOFF: z.string().transform(Number).default("2"),
+  GLOBAL_TIMEOUT_MS: z.string().default("120000").transform(Number),
+  RESEARCH_TIMEOUT_MS: z.string().default("35000").transform(Number),
+  EXA_TIMEOUT_MS: z.string().default("15000").transform(Number),
+  RETRY_ATTEMPTS: z.string().default("3").transform(Number),
+  RETRY_DELAY_MS: z.string().default("1000").transform(Number),
+  RETRY_BACKOFF: z.string().default("2").transform(Number),
 });
 
 export const config = envSchema.parse(process.env);
