@@ -3,13 +3,18 @@
   "private": true,
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "turbo run dev ",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/bun": "latest",
+    "autoprefixer": "^10.4.23",
+    "postcss": "^8.5.6",
     "prettier": "^3.7.4",
+    "tailwindcss": "^4.1.18",
     "turbo": "^2.7.2",
     "typescript": "5.9.2"
   },
@@ -20,5 +25,7 @@
   "workspaces": [
     "apps/*",
     "packages/*"
-  ]
+  ],
+  "module": "index.ts",
+  "type": "module"
 }

@@ -9,11 +9,12 @@
   },
   "dependencies": {
     "@solidjs/meta": "^0.29.4",
-    "@solidjs/router": "^0.15.0",
-    "@solidjs/start": "^1.1.0",
-    "solid-js": "^1.9.5",
-    "vinxi": "^0.5.7",
+    "@solidjs/router": "^0.15.4",
+    "@solidjs/start": "^1.2.1",
+    "solid-js": "^1.9.10",
+    "vinxi": "^0.5.10",
     "@apps/backend": "workspace:*",
+    "@repo/ui-configs": "workspace:*",
     "hono": "latest"
   },
   "engines": {
@@ -21,9 +22,15 @@
   },
   "private": true,
   "devDependencies": {
-    "@types/bun": "latest"
+    "@repo/ui-configs": "workspace:*",
+    "@tailwindcss/postcss": "^4.1.18",
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/bun": "latest",
+    "autoprefixer": "latest",
+    "postcss": "latest",
+    "tailwindcss": "latest"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^5.9.2"
   }
 }

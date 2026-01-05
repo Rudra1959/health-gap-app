@@ -7,10 +7,11 @@ import "./app.css";
 export default function App() {
   return (
     <Router
-      root={props => (
+      root={(props) => (
         <MetaProvider>
-          <Title>SolidStart - Basic</Title>
-          <a href="/">Index</a>
+          <Title>home</Title>
+          <a href="/home">home</a>
+          <a href="/chat">chat</a>
           <a href="/about">About</a>
           <Suspense>{props.children}</Suspense>
         </MetaProvider>
