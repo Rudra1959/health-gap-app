@@ -42,14 +42,22 @@ app.onError(errorMiddleware);
 
 // Fast root response (Railway health / proxy)
 app.get("/", (c) => c.text("OK"));
-
-app.get("/health", async (c) => {
-  await db.execute(sql`SELECT 1`);
+app.get("/health", (c) => {
   return c.json({
-    status: "healthy",
-    database: "connected",
+    status: "ok",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
   });
 });
+app.get("/health/db", async (c) => {
+  try {
+    await db.execute(sql`SELECT 1`);
+    return c.json({ database: "connected" });
+  } catch (err) {
+    return c.json({ database: "error", message: String(err) }, 500);
+  }
+});
+
 
 app.post("/api/scan", zValidator("json", ScanRequestSchema), async (c) => {
   const timeout = new Promise<never>((_, reject) =>
