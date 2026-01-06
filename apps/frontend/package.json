@@ -1,5 +1,5 @@
 {
-  "name": "example-basic",
+  "name": "@repo/frontend",
   "type": "module",
   "scripts": {
     "dev": "vinxi dev",
