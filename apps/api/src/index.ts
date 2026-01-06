@@ -7,10 +7,19 @@ import { errorMiddleware } from "./middleware/error";
 import { HTTPException } from "hono/http-exception";
 import { ScanRequestSchema, parseIngredientList } from "@repo/shared";
 import { config } from "./config";
+import { cors } from "hono/cors";
 
 const { scans } = schema;
 
 const app = new Hono();
+app.use(
+  "/*",
+  cors({
+    origin: "*", // In production, change this to your frontend URL
+    allowMethods: ["POST", "GET", "OPTIONS"],
+    allowHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
 app.onError(errorMiddleware);
 

@@ -3,14 +3,14 @@ export function TopBar() {
     <header
       /* h-14 matches the slim height ratio in the chat design
          bg-[#FDF6E3] is the exact cream background */
-      class="w-full h-14 border-b-2 border-black flex items-center justify-between px-6 bg-[#FDF6E3] sticky top-0 z-40"
+      class="w-full h-14 border-b-2 flex items-center justify-between px-6 bg-[#FDF6E3] sticky top-0 z-40"
     >
       {/* Left Section: Branding */}
       <div class="flex items-center gap-3">
         <div class="w-6 h-6 flex items-center justify-center">
           {/* Put your leaf PNG path here */}
           <img
-            src="/icons/leaf-logo.png"
+            src="leaf.png"
             class="w-full h-full object-contain"
             alt="Logo"
           />
@@ -26,7 +26,7 @@ export function TopBar() {
         <button class="w-9 h-9 border-2 border-black flex items-center justify-center bg-[#FFD9B2] hover:bg-[#ffcd9b] transition-colors">
           {/* Put your bell PNG path here */}
           <img
-            src="/icons/bell.png"
+            src="/bell.png"
             class="w-5 h-5 object-contain"
             alt="Notifications"
           />
@@ -36,7 +36,7 @@ export function TopBar() {
         <button class="w-9 h-9 border-2 border-black flex items-center justify-center bg-[#FFD9B2] hover:bg-[#ffcd9b] transition-colors">
           {/* Put your help/question PNG path here */}
           <img
-            src="/icons/help.png"
+            src="/help.png"
             class="w-5 h-5 object-contain"
             alt="Help"
           />

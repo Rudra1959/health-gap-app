@@ -19,17 +19,19 @@ export function Sidebar(props: SidebarProps) {
       - Centers the sidebar vertically on the screen ratio
       - Adds horizontal padding to keep it off the very edge
     */
-    <div class="flex flex-col justify-center h-screen px-3">
+    <div class="flex flex-col justify-center h-screen  px-3">
       <aside
         /* Main Sidebar Box:
           - w-[54px]: Narrow width as seen in the Chat screen
           - h-fit: Height only as tall as the icons, not full screen
           - border-2: Solid black outline on all sides
         */
-        class="w-[54px] h-fit bg-[#FDF6E3] border-2 border-black flex flex-col items-center py-6"
+        class="w-[54px] h-fit bg-[#FDF6E3] border-2 border-black flex flex-col items-center py-6 rounded"
       >
         {/* Branding Logo: Reduced margin for smaller ratio */}
-        <div class="text-[#2D6A4F] text-xl mb-7 cursor-pointer">🍃</div>
+        <div class="text-[#2D6A4F] text-xl mb-7 cursor-pointer">
+          <img src="leaf.png" class="w-7 h-7 object-contain" alt="Logo" />
+        </div>
 
         {/* Menu Navigation: Tight gap-6 spacing */}
         <nav class="flex flex-col items-center gap-6">

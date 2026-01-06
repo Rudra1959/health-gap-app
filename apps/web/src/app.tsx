@@ -9,10 +9,9 @@ export default function App() {
     <Router
       root={(props) => (
         <MetaProvider>
-          <Title>home</Title>
-          <a href="/home">home</a>
-          <a href="/chat">chat</a>
-          <a href="/about">About</a>
+          <Title>EatWise - Understand Your Food</Title>
+          {/* Apply font and background globally to match design */}
+          <div class="font-telegraf antialiased selection:bg-[#FFD9B2]"></div>
           <Suspense>{props.children}</Suspense>
         </MetaProvider>
       )}

@@ -2,7 +2,11 @@ import { ActionButton } from "~/components/button";
 import { Title } from "@solidjs/meta";
 import { ImageDeck } from "~/components/ImageDeck";
 import { Sidebar } from "~/components/Sidebar";
+import { useNavigate } from "@solidjs/router";
+import { createSignal, For } from "solid-js";
+
 export default function LandingPage() {
+  const navigate = useNavigate();
   return (
     <main>
       <div class="min-h-screen bg-[#FFF6E6] flex items-center justify-center p-8">
@@ -30,8 +34,13 @@ export default function LandingPage() {
             </p>
 
             <div class="flex gap-6 pt-4">
-              <ActionButton variant="green">Scan ingredients</ActionButton>
-              <ActionButton variant="orange">
+              <ActionButton variant="green" onClick={() => navigate("/signupPage")}>
+                Scan ingredients
+              </ActionButton>
+              <ActionButton
+                variant="orange"
+                onClick={() => navigate("/signupPage")}
+              >
                 Paste ingredient list
               </ActionButton>
             </div>
@@ -40,7 +49,6 @@ export default function LandingPage() {
           <div class="flex justify-center items-center h-full">
             <ImageDeck />
           </div>
-          
         </div>
       </div>
     </main>

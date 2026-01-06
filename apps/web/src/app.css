@@ -3,24 +3,4 @@
 /* The "Source" directive replaces the old "content" array. */
 /* It tells Tailwind to scan your UI package for classes. */
 @source "../../packages/ui-configs"; /* */
-
-@layer base {
-  @font-face {
-    font-family: 'PP Telegraf';
-    src: url('/fonts/PPTelegraf-Regular.woff2') format('woff2');
-    font-weight: 400;
-    font-style: normal;
-  }
-
-  @font-face {
-    font-family: 'PP Telegraf';
-    src: url('/fonts/PPTelegraf-Bold.woff2') format('woff2');
-    font-weight: 700;
-    font-style: normal;
-  }
-
-  /* Automatically apply to the whole app to match design */
-  html, body {
-    @apply font-telegraf antialiased text-black bg-[#FDF6E3];
-  }
-}
+@source "./**/*.{js,ts,jsx,tsx,html}"; /* */
