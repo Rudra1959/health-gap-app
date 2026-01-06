@@ -21,6 +21,7 @@
     "@repo/ai-engine": "workspace:*",
     "@repo/database": "workspace:*",
     "@repo/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.89.0",
     "drizzle-orm": "^0.45.1",
     "hono": "^4.11.3",
     "zod": "^4.2.1"

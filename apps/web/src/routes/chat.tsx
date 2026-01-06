@@ -1,211 +1,192 @@
-// routes/chat.tsx
-import { createSignal, For, Show, createEffect, onCleanup } from "solid-js";
+import { createSignal, For, Show, createEffect, onMount } from "solid-js";
+import { useNavigate } from "@solidjs/router";
+import { supabase } from "~/lib/auth";
 import { IngredientInput } from "~/components/IngredientInput";
 import { TopBar } from "~/components/TopBar";
 import { Sidebar } from "~/components/Sidebar";
 
-// Types matching your backend response
-type BackendComponent = {
-  component: string; // e.g., "ConversationPrompt"
-  props: any;
-};
-
 type Message = {
-  role: "user" | "assistant";
-  content?: string; // For user text or simple fallback
-  image?: string; // For user images
-  components?: BackendComponent[]; // From backend
   id: number;
+  role: "user" | "assistant";
+  content?: string;
+  image?: string;
+  components?: any[]; // This holds our UI cards
 };
 
 export default function ChatPage() {
+  const navigate = useNavigate();
   const [messages, setMessages] = createSignal<Message[]>([]);
   const [loading, setLoading] = createSignal(false);
-  let messagesEndRef: HTMLDivElement | undefined;
+  const [isReady, setIsReady] = createSignal(false);
+  let scrollRef: HTMLDivElement | undefined;
 
-  // Auto-scroll to bottom when messages change
+  // 1. Auth Guard & Initial Check
+  onMount(async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) navigate("/signup", { replace: true });
+    else setIsReady(true);
+  });
+
+  // 2. Auto Scroll to Bottom
   createEffect(() => {
-    messages(); // Dependency
-    if (messagesEndRef) {
-      messagesEndRef.scrollIntoView({ behavior: "smooth" });
-    }
+    messages();
+    if (scrollRef) scrollRef.scrollTop = scrollRef.scrollHeight;
   });
 
   const handleSend = async (data: { text?: string; image?: string }) => {
-    const newMsg: Message = {
-      id: Date.now(),
-      role: "user",
-      content: data.text,
-      image: data.image,
-    };
-
-    setMessages((prev) => [...prev, newMsg]);
+    const userMsg: Message = { id: Date.now(), role: "user", ...data };
+    setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
-try {
-  // Check if your port is 3000, 8787, or 5173!
-  const response = await fetch("http://localhost:3000/api/scan", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      image: data.image || null,
-      sessionId: "user-123",
-      scanLocation: "Web App",
-    }),
-  });
 
-  if (!response.ok) throw new Error("Network response was not ok");
+    try {
+      const response = await fetch("http://localhost:3000/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image: data.image,
+          // Ensure "text" is mapped correctly to what the backend expects (barcode or manual text)
+          barcode: data.text?.match(/^\d+$/) ? data.text : undefined,
+          text: data.text,
+        }),
+      });
 
-  const result = await response.json();
+      const result = await response.json();
 
-  // 2. Process Backend Response
-  const aiMsg: Message = {
-    id: Date.now() + 1,
-    role: "assistant",
-    // The backend returns { components: [...] }
-    components: result.components || [],
-  };
-
-  setMessages((prev) => [...prev, aiMsg]);
-} catch (error) {
-  console.error("Error sending message:", error);
-  // Add error message to chat
-  setMessages((prev) => [
-    ...prev,
-    {
-      id: Date.now(),
-      role: "assistant",
-      content: "Sorry, I couldn't connect to the server. Please try again.",
-    },
-  ]);
-} finally {
-  setLoading(false);
-}
+      // FIXED: Destructure result to ensure we aren't saving raw JSON objects as content
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          role: "assistant",
+          content: result.message || "Analysis complete:", // Ensure there's a string here
+          components: result.components || [], // Ensure this is always an array
+        },
+      ]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          role: "assistant",
+          content:
+            "⚠️ Connection error. Please check if your backend is running.",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div class="flex h-screen bg-white font-telegraf overflow-hidden">
-      {/* Sidebar fixed to left */}
-      <Sidebar activeId="search" />
+    <Show
+      when={isReady()}
+      fallback={<div class="h-screen w-screen bg-[#FDF6E3]" />}
+    >
+      <div class="flex h-screen bg-[#FDF6E3] font-telegraf overflow-hidden">
+        <Sidebar activeId="search" />
 
-      <div class="flex-1 flex flex-col relative h-full">
-        <TopBar />
+        <div class="flex-1 flex flex-col min-w-0 bg-white border-l-2 border-black">
+          <TopBar />
 
-        {/* Chat Scroll Area */}
-        <div class="flex-1 overflow-y-auto px-6 py-6 space-y-6 pb-48">
-          <Show when={messages().length === 0}>
-            <div class="flex flex-col items-center justify-center h-full opacity-20 select-none">
-              <span class="text-8xl">🥗</span>
-              <p class="text-2xl font-bold mt-4 uppercase">Ready to scan</p>
-            </div>
-          </Show>
-
-          <For each={messages()}>
-            {(msg) => (
-              <div
-                class={`flex w-full ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
+          {/* Chat Area */}
+          <div
+            ref={scrollRef}
+            class="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 pb-32 scroll-smooth"
+          >
+            <For each={messages()}>
+              {(msg) => (
                 <div
-                  class={`max-w-[85%] sm:max-w-[70%] p-5 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-lg ${
-                    msg.role === "user"
-                      ? "bg-[#FFD9B2] rounded-l-2xl rounded-tr-2xl"
-                      : "bg-white rounded-r-2xl rounded-tl-2xl"
-                  }`}
+                  class={`flex w-full ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
-                  {/* User Image Display */}
-                  <Show when={msg.image}>
-                    <img
-                      src={msg.image}
-                      class="w-48 h-auto rounded-lg border-2 border-black mb-2"
-                      alt="Uploaded scan"
-                    />
-                  </Show>
+                  <div
+                    class={`max-w-[85%] p-5 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${
+                      msg.role === "user"
+                        ? "bg-[#FFD9B2] rounded-l-2xl rounded-tr-2xl"
+                        : "bg-white rounded-r-2xl rounded-tl-2xl"
+                    }`}
+                  >
+                    <Show when={msg.image}>
+                      <img
+                        src={msg.image}
+                        class="w-64 h-auto border-2 border-black mb-3 rounded-lg"
+                      />
+                    </Show>
 
-                  {/* User Text Display */}
-                  <Show when={msg.content}>
-                    <p class="whitespace-pre-wrap font-medium">{msg.content}</p>
-                  </Show>
+                    {/* Render standard text content */}
+                    <Show when={msg.content}>
+                      <p class="font-bold text-lg whitespace-pre-wrap">
+                        {msg.content}
+                      </p>
+                    </Show>
 
-                  {/* AI Dynamic Component Rendering */}
-                  <Show when={msg.role === "assistant" && msg.components}>
-                    <div class="space-y-4">
-                      <For each={msg.components}>
-                        {(comp) => (
-                          <DynamicRenderer
-                            component={comp.component}
-                            props={comp.props}
-                          />
-                        )}
-                      </For>
-                    </div>
-                  </Show>
+                    {/* Render Dynamic UI Components (The Cards) */}
+                    <Show when={msg.components && msg.components.length > 0}>
+                      <div class="mt-4 space-y-4">
+                        <For each={msg.components}>
+                          {(comp) => (
+                            <DynamicRenderer
+                              component={comp.component}
+                              props={comp.props}
+                            />
+                          )}
+                        </For>
+                      </div>
+                    </Show>
+                  </div>
                 </div>
-              </div>
-            )}
-          </For>
+              )}
+            </For>
+          </div>
 
-          {/* Invisible element to scroll to */}
-          <div ref={messagesEndRef} />
+          {/* Fixed Input */}
+          <div class="p-6 bg-gradient-to-t from-white via-white to-transparent">
+            <IngredientInput onSend={handleSend} loading={loading()} />
+          </div>
         </div>
-
-        {/* Input Area (Fixed Bottom) */}
-        
-          <IngredientInput onSend={handleSend} loading={loading()} />
-        
       </div>
-    </div>
+    </Show>
   );
 }
-
-// 3. Helper to Render Backend Components
-// This maps the string name from your backend ("ConversationPrompt", etc.) to UI
 function DynamicRenderer(props: { component: string; props: any }) {
+  // If props are missing entirely, return nothing instead of crashing
+  if (!props.props) return null;
+
   return (
-    <div class="font-telegraf">
-      <Show when={props.component === "ConversationPrompt"}>
-        <div class="space-y-3">
-          <p class="font-bold text-xl leading-tight">{props.props.message}</p>
-
-          <Show when={props.props.productType}>
-            <div class="inline-block px-3 py-1 bg-[#D1FAE5] border-2 border-black rounded-full text-xs font-bold uppercase tracking-wider">
-              Detected: {props.props.productType}
-            </div>
-          </Show>
-
-          <Show when={props.props.suggestedQuestions}>
-            <div class="flex flex-wrap gap-2 pt-2">
-              <For each={props.props.suggestedQuestions}>
-                {(q: string) => (
-                  <button class="px-3 py-2 bg-white border border-black rounded-lg text-sm font-medium hover:bg-black hover:text-white transition-colors">
-                    {q}
-                  </button>
-                )}
-              </For>
-            </div>
-          </Show>
+    <div class="animate-in fade-in slide-in-from-bottom-2 duration-300">
+      {/* 1. PRODUCT ANALYSIS CARD */}
+      <Show when={props.component === "ProductAnalysis"}>
+        <div class="p-4 border-2 border-black bg-[#D1FAE5] shadow-[4px_4px_0px_0px_black] rounded-xl flex items-center gap-4">
+          <div class="w-16 h-16 shrink-0 border-4 border-black bg-white rounded-full flex items-center justify-center text-2xl font-black shadow-[2px_2px_0px_0px_black]">
+            {/* Added fallback to '?' if score is missing */}
+            {props.props?.healthScore ?? props.props?.score ?? "?"}
+          </div>
+          <div>
+            <h4 class="font-black uppercase text-sm tracking-tight">
+              {props.props?.title || "Product Info"}
+            </h4>
+            <p class="text-xs font-bold text-black/70 leading-tight">
+              {props.props?.summary || "No description available."}
+            </p>
+          </div>
         </div>
       </Show>
 
-      {/* Fallback for "ProductAnalysis" or other components */}
-      <Show when={props.component !== "ConversationPrompt"}>
-        <div class="space-y-2">
-          <h3 class="font-bold text-lg uppercase underline decoration-2">
-            {props.props.title || "Analysis"}
-          </h3>
-          <p>
-            {props.props.message ||
-              props.props.analysis ||
-              JSON.stringify(props.props)}
-          </p>
-
-          {/* Render Health Score if available */}
-          <Show when={props.props.healthScore !== undefined}>
-            <div class="mt-4 flex items-center gap-4">
-              <div class="w-16 h-16 flex items-center justify-center border-2 border-black bg-green-400 rounded-full font-black text-2xl">
-                {props.props.healthScore}
-              </div>
-              <span class="font-bold uppercase text-sm">Health Score</span>
-            </div>
-          </Show>
+      {/* 2. CONVERSATION PROMPTS */}
+      <Show when={props.component === "ConversationPrompt"}>
+        <div class="space-y-3">
+          <p class="font-black text-xs uppercase opacity-40">Suggested:</p>
+          <div class="flex flex-wrap gap-2">
+            {/* Added fallback to empty array */}
+            <For each={props.props?.suggestedQuestions || []}>
+              {(q: string) => (
+                <button class="px-4 py-2 bg-white border-2 border-black font-black text-xs uppercase hover:bg-black hover:text-white transition-all shadow-[2px_2px_0px_0px_black] active:shadow-none active:translate-x-[1px] active:translate-y-[1px]">
+                  {q}
+                </button>
+              )}
+            </For>
+          </div>
         </div>
       </Show>
     </div>

@@ -8,14 +8,15 @@
     "version": "vinxi version"
   },
   "dependencies": {
+    "@apps/backend": "workspace:*",
+    "@repo/ui-configs": "workspace:*",
     "@solidjs/meta": "^0.29.4",
     "@solidjs/router": "^0.15.4",
     "@solidjs/start": "^1.2.1",
+    "@supabase/supabase-js": "^2.89.0",
+    "hono": "latest",
     "solid-js": "^1.9.10",
-    "vinxi": "^0.5.10",
-    "@apps/backend": "workspace:*",
-    "@repo/ui-configs": "workspace:*",
-    "hono": "latest"
+    "vinxi": "^0.5.10"
   },
   "engines": {
     "node": ">=22"
