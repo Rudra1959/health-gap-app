@@ -128,11 +128,12 @@ app.post("/api/scan", zValidator("json", ScanRequestSchema), async (c) => {
 });
 
 /* ---------- Bun server ---------- */
-const port = Number(process.env.PORT) || 3000;
-if (!(globalThis as any).__serverStarted) {
-  (globalThis as any).__serverStarted = true;
-
-  Bun.serve({
+const port = Number(process.env.PORT);
+if (!port) {
+  throw new Error("PORT is not defined");
+}
+if(!(globalThis as any).__bunServer) {
+  (globalThis as any).__bunServer = Bun.serve({
     port,
     fetch: app.fetch,
   });
