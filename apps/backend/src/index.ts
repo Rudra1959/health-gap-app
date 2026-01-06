@@ -129,11 +129,12 @@ app.post("/api/scan", zValidator("json", ScanRequestSchema), async (c) => {
 
 /* ---------- Bun server ---------- */
 const port = Number(process.env.PORT) || 3000;
+if (!(globalThis as any).__serverStarted) {
+  (globalThis as any).__serverStarted = true;
 
-Bun.serve({
-  port,
-  fetch: app.fetch,
-});
-
-console.log(`🚀 Backend running on port ${port}`);
+  Bun.serve({
+    port,
+    fetch: app.fetch,
+  });
+console.log(`🚀 Backend running on port ${port}`);}
 export default app;
