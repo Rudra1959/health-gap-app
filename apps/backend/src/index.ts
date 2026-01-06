@@ -1,42 +1,54 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { db, schema, saveScanHistory, getRecentPatterns } from "@repo/database";
+import { cors } from "hono/cors";
+import { HTTPException } from "hono/http-exception";
 import { sql } from "drizzle-orm";
+
+import { db, schema, saveScanHistory, getRecentPatterns } from "@repo/database";
+
 import {
   fetchProductByBarcode,
   visionAgent,
-  isVisionSuccess,
   isVisionFailure,
   intentInference,
   researchAgent,
   generateUI,
 } from "@repo/ai-engine";
-import { errorMiddleware } from "./middleware/error";
-import { HTTPException } from "hono/http-exception";
+
 import { ScanRequestSchema, parseIngredientList } from "@repo/shared";
-import { cors } from "hono/cors";
+import { errorMiddleware } from "./middleware/error";
 
 const { scans } = schema;
 const app = new Hono();
 
-/* ---------- middleware ---------- */
+/* =======================
+   Middleware
+======================= */
+
 app.use(
   "/*",
   cors({
-    origin: "*",
-    allowMethods: ["POST", "GET", "OPTIONS"],
+    origin: "*", // 🔒 lock this to frontend domain in prod
+    allowMethods: ["GET", "POST", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
   })
 );
 
 app.onError(errorMiddleware);
 
-/* ---------- routes ---------- */
-app.get("/", (c) => c.json({ message: "Health Gap Backend is running!" }));
+/* =======================
+   Routes
+======================= */
+
+// Fast root response (Railway health / proxy)
+app.get("/", (c) => c.text("OK"));
 
 app.get("/health", async (c) => {
   await db.execute(sql`SELECT 1`);
-  return c.json({ status: "healthy", database: "connected" });
+  return c.json({
+    status: "healthy",
+    database: "connected",
+  });
 });
 
 app.post("/api/scan", zValidator("json", ScanRequestSchema), async (c) => {
@@ -54,6 +66,7 @@ app.post("/api/scan", zValidator("json", ScanRequestSchema), async (c) => {
     let productName = "Unknown Product";
     let detectedText = "";
 
+    /* ---------- Barcode lookup ---------- */
     if (barcode) {
       const product = await fetchProductByBarcode(barcode);
       if (product) {
@@ -63,21 +76,29 @@ app.post("/api/scan", zValidator("json", ScanRequestSchema), async (c) => {
       }
     }
 
+    /* ---------- Vision fallback ---------- */
     if (!ingredients.length) {
       if (!image) {
-        throw new HTTPException(400, { message: "Image required" });
+        throw new HTTPException(400, {
+          message: "Image required when barcode fails",
+        });
       }
 
       const vision = await visionAgent(image);
 
       if (isVisionFailure(vision)) {
-        return c.json({ status: "vision_failed", message: vision.message });
+        return c.json({
+          status: "vision_failed",
+          message: vision.message,
+          confidence: vision.confidence,
+        });
       }
 
       ingredients = vision.ingredients;
       detectedText = JSON.stringify(vision);
     }
 
+    /* ---------- AI reasoning ---------- */
     const now = new Date().toISOString();
     const history = sessionId ? await getRecentPatterns(sessionId) : [];
 
@@ -101,41 +122,34 @@ app.post("/api/scan", zValidator("json", ScanRequestSchema), async (c) => {
       tradeOffContexts: research.tradeOffContexts,
     });
 
-    // async persistence
-    (async () => {
-      try {
-        if (sessionId) {
-          await saveScanHistory(sessionId, {
-            productName,
-            userIntent: intent.persona,
-            timestamp: now,
-          });
-        }
-
-        await db.insert(scans).values({
-          imageUrl: image ? "image" : "barcode",
-          detectedText: detectedText.slice(0, 2000),
-          userIntentCategory: intent.persona,
-          timestamp: new Date(),
-        });
-      } catch {}
-    })();
+    /* ---------- Async persistence (non-blocking) ---------- */
+    Promise.allSettled([
+      sessionId &&
+        saveScanHistory(sessionId, {
+          productName,
+          userIntent: intent.persona,
+          timestamp: now,
+        }),
+      db.insert(scans).values({
+        imageUrl: image ? "image" : "barcode",
+        detectedText: detectedText.slice(0, 2000),
+        userIntentCategory: intent.persona,
+        timestamp: new Date(),
+      }),
+    ]);
 
     return c.json(ui);
   })();
 
-  return await Promise.race([job, timeout]);
+  return Promise.race([job, timeout]);
 });
 
-/* ---------- Bun server ---------- */
-const port = Number(process.env.PORT);
-if (!port) {
-  throw new Error("PORT is not defined");
-}
-if(!(globalThis as any).__bunServer) {
-  (globalThis as any).__bunServer = Bun.serve({
-    port,
-    fetch: app.fetch,
-  });
-console.log(`🚀 Backend running on port ${port}`);}
-export default app;
+/* =======================
+   ✅ Bun Auto-Server (IMPORTANT)
+   DO NOT call Bun.serve()
+======================= */
+
+export default {
+  port: Number(process.env.PORT), // Railway injects this
+  fetch: app.fetch,
+};
