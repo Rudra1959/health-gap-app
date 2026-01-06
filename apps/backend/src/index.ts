@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { serve } from "@hono/node-server";
+import { serve } from "bun";
 import { zValidator } from "@hono/zod-validator";
 import { db, schema, saveScanHistory, getRecentPatterns } from "@repo/database";
 import { sql } from "drizzle-orm";
