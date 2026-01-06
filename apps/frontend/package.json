@@ -1,5 +1,5 @@
 {
-  "name": "@repo/frontend",
+  "name": "@apps/frontend",
   "type": "module",
   "scripts": {
     "dev": "vinxi dev",
