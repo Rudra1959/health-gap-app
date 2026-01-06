@@ -27,5 +27,8 @@
     "packages/*"
   ],
   "module": "index.ts",
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "vercel": "^50.1.5"
+  }
 }

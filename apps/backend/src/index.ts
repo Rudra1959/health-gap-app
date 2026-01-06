@@ -8,7 +8,7 @@ import { HTTPException } from "hono/http-exception";
 import { ScanRequestSchema, parseIngredientList } from "@repo/shared";
 import { config } from "./config";
 import { cors } from "hono/cors";
-import { handle } from "@hono/vercel";
+
 
 const { scans } = schema;
 
@@ -180,7 +180,4 @@ const routes = app.post(
 
 export type AppType = typeof routes;
 export const runtime = "edge";
-export default handle(app);
-export const GET = handle(app);
-export const POST = handle(app);
-export const OPTIONS = handle(app);
+export default routes;
