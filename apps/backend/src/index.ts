@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { serve } from "bun";
 import { zValidator } from "@hono/zod-validator";
 import { db, schema, saveScanHistory, getRecentPatterns } from "@repo/database";
 import { sql } from "drizzle-orm";
@@ -20,8 +19,7 @@ import { cors } from "hono/cors";
 const { scans } = schema;
 const app = new Hono();
 
-/* -------------------- MIDDLEWARE -------------------- */
-
+/* ---------- middleware ---------- */
 app.use(
   "/*",
   cors({
@@ -33,11 +31,8 @@ app.use(
 
 app.onError(errorMiddleware);
 
-/* -------------------- ROUTES -------------------- */
-
-app.get("/", (c) => {
-  return c.json({ message: "Health Gap Backend is running!" });
-});
+/* ---------- routes ---------- */
+app.get("/", (c) => c.json({ message: "Health Gap Backend is running!" }));
 
 app.get("/health", async (c) => {
   await db.execute(sql`SELECT 1`);
@@ -45,14 +40,14 @@ app.get("/health", async (c) => {
 });
 
 app.post("/api/scan", zValidator("json", ScanRequestSchema), async (c) => {
-  const timeoutPromise = new Promise<never>((_, reject) => {
+  const timeout = new Promise<never>((_, reject) =>
     setTimeout(
       () => reject(new HTTPException(408, { message: "Request timeout" })),
       25_000
-    );
-  });
+    )
+  );
 
-  const processingPromise = (async () => {
+  const job = (async () => {
     const { image, barcode, scanLocation, sessionId } = c.req.valid("json");
 
     let ingredients: string[] = [];
@@ -73,80 +68,72 @@ app.post("/api/scan", zValidator("json", ScanRequestSchema), async (c) => {
         throw new HTTPException(400, { message: "Image required" });
       }
 
-      const visionResult = await visionAgent(image);
+      const vision = await visionAgent(image);
 
-      if (isVisionFailure(visionResult)) {
-        return c.json({
-          status: "vision_failed",
-          message: visionResult.message,
-          detectedContext: visionResult.detectedContext,
-        });
+      if (isVisionFailure(vision)) {
+        return c.json({ status: "vision_failed", message: vision.message });
       }
 
-      ingredients = visionResult.ingredients;
-      detectedText = JSON.stringify(visionResult);
+      ingredients = vision.ingredients;
+      detectedText = JSON.stringify(vision);
     }
 
-    const currentTime = new Date().toISOString();
-    const recentHistory = sessionId ? await getRecentPatterns(sessionId) : [];
+    const now = new Date().toISOString();
+    const history = sessionId ? await getRecentPatterns(sessionId) : [];
 
-    const intentResult = await intentInference(
-      currentTime,
+    const intent = await intentInference(
+      now,
       ingredients,
       productName,
       scanLocation,
-      recentHistory
+      history
     );
 
-    const researchResult = await researchAgent(
+    const research = await researchAgent(
       ingredients,
-      intentResult.persona,
-      intentResult.riskAssessment,
-      intentResult.userContextBias
+      intent.persona,
+      intent.riskAssessment,
+      intent.userContextBias
     );
 
-    const uiResponse = await generateUI(
-      researchResult.analysis,
-      intentResult.persona,
-      {
-        consensusStatus: researchResult.consensusStatus,
-        tradeOffContexts: researchResult.tradeOffContexts,
-      }
-    );
+    const ui = await generateUI(research.analysis, intent.persona, {
+      consensusStatus: research.consensusStatus,
+      tradeOffContexts: research.tradeOffContexts,
+    });
 
-    // async persistence (non-blocking)
+    // async persistence
     (async () => {
       try {
         if (sessionId) {
           await saveScanHistory(sessionId, {
             productName,
-            userIntent: intentResult.persona,
-            timestamp: currentTime,
+            userIntent: intent.persona,
+            timestamp: now,
           });
         }
 
         await db.insert(scans).values({
-          imageUrl: image ? "image_provided" : "barcode_scan",
+          imageUrl: image ? "image" : "barcode",
           detectedText: detectedText.slice(0, 2000),
-          userIntentCategory: intentResult.persona,
+          userIntentCategory: intent.persona,
           timestamp: new Date(),
         });
       } catch {}
     })();
 
-    return c.json(uiResponse);
+    return c.json(ui);
   })();
 
-  return await Promise.race([processingPromise, timeoutPromise]);
+  return await Promise.race([job, timeout]);
 });
 
-/* -------------------- SERVER START -------------------- */
-
+/* ---------- Bun server ---------- */
 const port = Number(process.env.PORT) || 3000;
 
-serve({
-  fetch: app.fetch,
+Bun.serve({
   port,
+  fetch: app.fetch,
 });
 
 console.log(`🚀 Backend running on port ${port}`);
+export default app;
