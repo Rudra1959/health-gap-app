@@ -9,7 +9,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:3001",
-      "https://health-gap-app-frontend.vercel.app",
+      "https://health-gap-app-frontend.vercel.app/",
     ],
     allowMethods: ["GET", "POST", "OPTIONS"],
     allowHeaders: ["Content-Type"],
