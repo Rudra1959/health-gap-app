@@ -28,7 +28,7 @@ const app = new Hono();
 app.use(
   "/*",
   cors({
-    origin: "*", // 🔒 lock this to frontend domain in prod
+    origin: "https://health-gap-app-frontend.vercel.app/", // 🔒 lock this to frontend domain in prod
     allowMethods: ["GET", "POST", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
   })
