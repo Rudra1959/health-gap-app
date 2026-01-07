@@ -1,8 +1,8 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import * as schema from './schema';
-import { config } from './config';
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
 
-const client = postgres(config.DATABASE_URL, { prepare: false });
-export const db = drizzle(client, { schema });
-export { schema };
+export function createDb(url?: string) {
+  if (!url) return null;
+  const client = postgres(url, { max: 10, ssl: "require" });
+  return drizzle(client);
+}

@@ -5,12 +5,17 @@
     "": {
       "name": "health-gap-app",
       "dependencies": {
+        "@upstash/redis": "^1.36.0",
+        "hono": "^4.11.3",
+        "openai": "^6.15.0",
         "vercel": "^50.1.5",
+        "zod": "^4.3.5",
       },
       "devDependencies": {
         "@tailwindcss/postcss": "^4.1.18",
         "@types/bun": "latest",
         "autoprefixer": "^10.4.23",
+        "bun-types": "^1.3.5",
         "postcss": "^8.5.6",
         "prettier": "^3.7.4",
         "tailwindcss": "^4.1.18",
@@ -24,15 +29,19 @@
         "@hono/zod-validator": "^0.7.6",
         "@repo/ai-engine": "workspace:*",
         "@repo/database": "workspace:*",
+        "@repo/memory": "workspace:*",
         "@repo/shared": "workspace:*",
         "@supabase/supabase-js": "^2.89.0",
+        "@upstash/redis": "^1.36.0",
         "drizzle-orm": "^0.45.1",
         "hono": "^4.11.3",
+        "openai": "^6.15.0",
         "vercel": "^50.1.5",
-        "zod": "^4.2.1",
+        "zod": "^4.3.5",
       },
       "devDependencies": {
         "@types/bun": "latest",
+        "bun-types": "^1.3.5",
       },
       "peerDependencies": {
         "typescript": "^5",
@@ -71,12 +80,13 @@
         "@repo/shared": "workspace:*",
         "exa-js": "^2.0.12",
         "groq-sdk": "^0.37.0",
-        "zod": "^4.2.1",
+        "zod": "^4.3.5",
       },
       "devDependencies": {
         "@repo/typescript-config": "workspace:*",
-        "@types/node": "^20",
-        "typescript": "^5",
+        "@types/bun": "latest",
+        "@types/node": "^20.19.27",
+        "typescript": "^5.9.3",
       },
     },
     "packages/database": {
@@ -85,15 +95,15 @@
       "dependencies": {
         "@upstash/redis": "^1.36.0",
         "drizzle-orm": "^0.45.1",
-        "postgres": "^3.4.7",
-        "zod": "^4.2.1",
+        "postgres": "^3.4.8",
+        "zod": "^4.3.5",
       },
       "devDependencies": {
         "@repo/typescript-config": "workspace:*",
         "@types/bun": "latest",
         "@types/node": "^25.0.3",
         "drizzle-kit": "^0.31.8",
-        "typescript": "^5",
+        "typescript": "^5.9.3",
       },
     },
     "packages/eslint-config": {
@@ -113,15 +123,25 @@
         "typescript-eslint": "^8.50.0",
       },
     },
+    "packages/memory": {
+      "name": "@repo/memory",
+      "devDependencies": {
+        "@types/bun": "latest",
+      },
+      "peerDependencies": {
+        "typescript": "^5.9.3",
+      },
+    },
     "packages/shared": {
       "name": "@repo/shared",
       "version": "0.0.0",
       "dependencies": {
-        "zod": "^4.2.1",
+        "zod": "^4.3.5",
       },
       "devDependencies": {
         "@repo/typescript-config": "workspace:*",
-        "typescript": "^5",
+        "@types/bun": "latest",
+        "typescript": "^5.9.3",
       },
     },
     "packages/typescript-config": {
@@ -390,6 +410,8 @@
     "@repo/database": ["@repo/database@workspace:packages/database"],
 
     "@repo/eslint-config": ["@repo/eslint-config@workspace:packages/eslint-config"],
+
+    "@repo/memory": ["@repo/memory@workspace:packages/memory"],
 
     "@repo/shared": ["@repo/shared@workspace:packages/shared"],
 
@@ -1537,7 +1559,7 @@
 
     "open": ["open@8.4.2", "", { "dependencies": { "define-lazy-prop": "^2.0.0", "is-docker": "^2.1.1", "is-wsl": "^2.2.0" } }, "sha512-7x81NCL719oNbsq/3mh+hVrAWmFuEYUqrq/Iw3kUzH8ReypT9QQ0BLoJS7/G9k6N81XjW4qHWtjWwe/9eLy1EQ=="],
 
-    "openai": ["openai@5.23.2", "", { "peerDependencies": { "ws": "^8.18.0", "zod": "^3.23.8" }, "optionalPeers": ["ws", "zod"], "bin": { "openai": "bin/cli" } }, "sha512-MQBzmTulj+MM5O8SKEk/gL8a7s5mktS9zUtAkU257WjvobGc9nKcBuVwjyEEcb9SI8a8Y2G/mzn3vm9n1Jlleg=="],
+    "openai": ["openai@6.15.0", "", { "peerDependencies": { "ws": "^8.18.0", "zod": "^3.25 || ^4.0" }, "optionalPeers": ["ws", "zod"], "bin": { "openai": "bin/cli" } }, "sha512-F1Lvs5BoVvmZtzkUEVyh8mDQPPFolq4F+xdsx/DO8Hee8YF3IGAlZqUIsF+DVGhqf4aU0a3bTghsxB6OIsRy1g=="],
 
     "optionator": ["optionator@0.9.4", "", { "dependencies": { "deep-is": "^0.1.3", "fast-levenshtein": "^2.0.6", "levn": "^0.4.1", "prelude-ls": "^1.2.1", "type-check": "^0.4.0", "word-wrap": "^1.2.5" } }, "sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g=="],
 
@@ -1597,7 +1619,7 @@
 
     "postcss-value-parser": ["postcss-value-parser@4.2.0", "", {}, "sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ=="],
 
-    "postgres": ["postgres@3.4.7", "", {}, "sha512-Jtc2612XINuBjIl/QTWsV5UvE8UHuNblcO3vVADSrKsrc6RqGX6lOW1cEo3CM2v0XG4Nat8nI+YM7/f26VxXLw=="],
+    "postgres": ["postgres@3.4.8", "", {}, "sha512-d+JFcLM17njZaOLkv6SCev7uoLaBtfK86vMUXhW1Z4glPWh4jozno9APvW/XKFJ3CCxVoC7OL38BqRydtu5nGg=="],
 
     "prelude-ls": ["prelude-ls@1.2.1", "", {}, "sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g=="],
 
@@ -2204,6 +2226,8 @@
     "eslint-plugin-react/resolve": ["resolve@2.0.0-next.5", "", { "dependencies": { "is-core-module": "^2.13.0", "path-parse": "^1.0.7", "supports-preserve-symlinks-flag": "^1.0.0" }, "bin": { "resolve": "bin/resolve" } }, "sha512-U7WjGVG9sH8tvjW5SmGbQuui75FiyjAX72HX15DwBBwF9dNiQZRQAg9nnPhYy+TUnE0+VcrttuvNI8oSxZcocA=="],
 
     "eslint-plugin-turbo/dotenv": ["dotenv@16.0.3", "", {}, "sha512-7GO6HghkA5fYG9TYnNxi14/7K9f5occMlp3zXAuSxn7CKCxt9xbNWG7yF8hTCSUchlfWSe3uLmlPfigevRItzQ=="],
+
+    "exa-js/openai": ["openai@5.23.2", "", { "peerDependencies": { "ws": "^8.18.0", "zod": "^3.23.8" }, "optionalPeers": ["ws", "zod"], "bin": { "openai": "bin/cli" } }, "sha512-MQBzmTulj+MM5O8SKEk/gL8a7s5mktS9zUtAkU257WjvobGc9nKcBuVwjyEEcb9SI8a8Y2G/mzn3vm9n1Jlleg=="],
 
     "exa-js/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 

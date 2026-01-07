@@ -11,7 +11,8 @@
   },
   "private": true,
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "bun-types": "^1.3.5"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -21,10 +22,13 @@
     "@repo/ai-engine": "workspace:*",
     "@repo/database": "workspace:*",
     "@repo/shared": "workspace:*",
+    "@repo/memory": "workspace:*",
     "@supabase/supabase-js": "^2.89.0",
+    "@upstash/redis": "^1.36.0",
     "drizzle-orm": "^0.45.1",
     "hono": "^4.11.3",
+    "openai": "^6.15.0",
     "vercel": "^50.1.5",
-    "zod": "^4.2.1"
+    "zod": "^4.3.5"
   }
 }

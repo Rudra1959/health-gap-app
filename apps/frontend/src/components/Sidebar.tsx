@@ -19,7 +19,7 @@ export function Sidebar(props: SidebarProps) {
       - Centers the sidebar vertically on the screen ratio
       - Adds horizontal padding to keep it off the very edge
     */
-    <div class="flex flex-col justify-center h-screen  px-3">
+    <div class="flex flex-col justify-center   px-3">
       <aside
         /* Main Sidebar Box:
           - w-[54px]: Narrow width as seen in the Chat screen
