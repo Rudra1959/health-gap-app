@@ -7,10 +7,7 @@ const app = new Hono();
 app.use(
   "*",
   cors({
-    origin: [
-      "http://localhost:3001",
-      "https://health-gap-app-frontend.vercel.app",
-    ],
+    origin: "*", // 🔒 lock this to frontend domain in prod
     allowMethods: ["GET", "POST", "OPTIONS"],
     allowHeaders: ["Content-Type"],
   })
